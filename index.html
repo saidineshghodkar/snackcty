@@ -1,0 +1,492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>SnackCity - Delicious Snacks & More</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        :root {
+            --primary: #FF6B35;
+            --primary-dark: #E55A2B;
+            --secondary: #F7C59F;
+            --accent: #EF476F;
+            --dark: #2B2D42;
+            --light: #FFF8F0;
+            --white: #ffffff;
+            --green: #06D6A0;
+            --red: #EF476F;
+            --shadow: 0 4px 20px rgba(0, 0, 0, 0.12);
+            --shadow-lg: 0 10px 40px rgba(0, 0, 0, 0.18);
+            --radius: 16px;
+            --radius-sm: 10px;
+            --transition: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        * { margin:0; padding:0; box-sizing:border-box; }
+        html { scroll-behavior:smooth; }
+        body { font-family:'Segoe UI',system-ui,-apple-system,sans-serif; background:var(--light); color:var(--dark); line-height:1.6; overflow-x:hidden; }
+        #customCursor { position:fixed; pointer-events:none; z-index:99999; width:40px; height:40px; border:3px solid var(--primary); border-radius:50%; transform:translate(-50%,-50%); transition:0.25s; mix-blend-mode:difference; display:none; }
+        #customCursor.dot { width:14px; height:14px; background:var(--primary); border:none; }
+        #cursorTrail { position:fixed; pointer-events:none; z-index:99998; width:10px; height:10px; background:var(--accent); border-radius:50%; transform:translate(-50%,-50%); opacity:0.6; display:none; }
+        @media (hover:hover) and (pointer:fine) { #customCursor, #cursorTrail { display:block; } }
+        @media (max-width:768px) { #customCursor, #cursorTrail { display:none!important; } }
+        .navbar { position:fixed; top:0; left:0; right:0; z-index:1000; background:rgba(255,255,255,0.85); backdrop-filter:blur(20px); border-bottom:1px solid rgba(0,0,0,0.06); padding:0.8rem 2rem; display:flex; align-items:center; justify-content:space-between; transition:var(--transition); }
+        .navbar.scrolled { box-shadow:var(--shadow); }
+        .logo-container { display:flex; align-items:center; gap:10px; font-size:1.6rem; font-weight:800; color:var(--primary); }
+        .logo-icon { width:44px; height:44px; background:var(--primary); border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-size:1.4rem; }
+        .nav-links { display:flex; gap:2rem; list-style:none; align-items:center; }
+        .nav-links a { text-decoration:none; color:var(--dark); font-weight:600; font-size:0.95rem; position:relative; }
+        .nav-links a::after { content:''; position:absolute; bottom:-4px; left:0; width:0; height:2px; background:var(--primary); transition:var(--transition); }
+        .nav-links a:hover::after { width:100%; }
+        .cart-btn { background:var(--primary); color:white!important; padding:0.55rem 1.3rem; border-radius:50px; cursor:pointer; font-weight:700; border:none; display:flex; align-items:center; gap:6px; }
+        .cart-btn:hover { background:var(--primary-dark); transform:translateY(-2px); box-shadow:0 6px 20px rgba(255,107,53,0.4); }
+        .cart-count { background:white; color:var(--primary); border-radius:50%; width:24px; height:24px; display:flex; align-items:center; justify-content:center; font-size:0.75rem; font-weight:800; }
+        .hamburger { display:none; flex-direction:column; gap:5px; cursor:pointer; background:none; border:none; padding:8px; }
+        .hamburger span { width:28px; height:3px; background:var(--dark); border-radius:3px; transition:var(--transition); }
+        @media (max-width:768px) { .nav-links { position:fixed; top:0; right:-100%; width:75%; max-width:320px; height:100vh; background:white; flex-direction:column; padding:5rem 2rem 2rem; gap:1.5rem; transition:var(--transition); box-shadow:-10px 0 40px rgba(0,0,0,0.2); z-index:999; } .nav-links.active { right:0; } .hamburger { display:flex; } .navbar { padding:0.8rem 1.2rem; } }
+        .fab-cart { position:fixed; bottom:30px; right:30px; z-index:1500; width:60px; height:60px; background:var(--primary); color:white; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 8px 25px rgba(255,107,53,0.5); cursor:pointer; border:none; font-size:1.8rem; transition:var(--transition); }
+        .fab-cart:hover { transform:scale(1.08); background:var(--primary-dark); }
+        .fab-cart .badge { position:absolute; top:-5px; right:-5px; background:white; color:var(--primary); border-radius:50%; width:26px; height:26px; display:flex; align-items:center; justify-content:center; font-size:0.8rem; font-weight:800; box-shadow:0 2px 8px rgba(0,0,0,0.2); }
+        .hero { position:relative; height:100vh; min-height:600px; overflow:hidden; display:flex; align-items:center; justify-content:center; text-align:center; }
+        .hero-slide { position:absolute; top:0; left:0; width:100%; height:100%; background-size:cover; background-position:center; opacity:0; transition:opacity 1s; z-index:0; }
+        .hero-slide.active { opacity:1; }
+        .hero-overlay { position:absolute; top:0; left:0; width:100%; height:100%; background:linear-gradient(135deg, rgba(0,0,0,0.65) 0%, rgba(0,0,0,0.35) 100%); z-index:1; }
+        .hero-content { position:relative; z-index:2; color:white; max-width:750px; padding:2rem; }
+        .hero-content h1 { font-size:4rem; font-weight:900; margin-bottom:1rem; text-shadow:0 4px 20px rgba(0,0,0,0.4); }
+        .hero-content h1 span { color:var(--primary); }
+        .hero-content p { font-size:1.25rem; opacity:0.9; margin-bottom:2rem; }
+        .hero-btn { display:inline-block; background:var(--primary); color:white; padding:1rem 2.5rem; border-radius:50px; text-decoration:none; font-weight:700; font-size:1.1rem; border:none; cursor:pointer; }
+        .hero-btn:hover { background:var(--primary-dark); transform:translateY(-3px); box-shadow:0 10px 30px rgba(255,107,53,0.5); }
+        .hero-dots { position:absolute; bottom:30px; z-index:2; display:flex; gap:10px; left:50%; transform:translateX(-50%); }
+        .hero-dot { width:12px; height:12px; border-radius:50%; background:rgba(255,255,255,0.5); cursor:pointer; transition:var(--transition); }
+        .hero-dot.active { background:var(--primary); width:36px; border-radius:10px; }
+        .highlights-section { padding:3rem 0; background:white; overflow:hidden; }
+        .highlights-section h2 { text-align:center; font-size:2.2rem; font-weight:800; margin-bottom:1.5rem; color:var(--dark); padding:0 2rem; }
+        .highlights-track-wrapper { overflow:hidden; width:100%; }
+        .highlights-track { display:flex; gap:1.5rem; width:max-content; animation:scrollHighlights 30s linear infinite; padding:1rem 0; }
+        .highlights-track:hover { animation-play-state:paused; }
+        @keyframes scrollHighlights { 0% { transform:translateX(0); } 100% { transform:translateX(-50%); } }
+        .highlight-card { min-width:280px; flex-shrink:0; border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow); cursor:pointer; transition:var(--transition); background:white; text-decoration:none; color:inherit; }
+        .highlight-card:hover { transform:translateY(-6px); box-shadow:var(--shadow-lg); }
+        .highlight-card img { width:100%; height:180px; object-fit:cover; }
+        .highlight-card .hl-info { padding:1rem 1.2rem; }
+        .highlight-card .hl-info h4 { font-weight:700; font-size:1.05rem; }
+        .about-section { padding:5rem 2rem; background:var(--light); text-align:center; }
+        .about-section h2 { font-size:2.2rem; font-weight:800; margin-bottom:1.5rem; }
+        .about-section p { max-width:700px; margin:0 auto; font-size:1.1rem; color:#555; }
+        .about-features { display:flex; gap:2rem; flex-wrap:wrap; justify-content:center; margin-top:3rem; max-width:900px; margin-left:auto; margin-right:auto; }
+        .about-feature { background:white; padding:2rem 1.5rem; border-radius:var(--radius); box-shadow:var(--shadow); flex:1; min-width:200px; max-width:250px; }
+        .about-feature .icon { font-size:2.5rem; margin-bottom:0.8rem; }
+        .about-feature h4 { font-weight:700; margin-bottom:0.4rem; }
+        .about-feature p { font-size:0.9rem; color:#666; }
+        .menu-section { padding:5rem 2rem; background:white; }
+        .menu-section h2 { text-align:center; font-size:2.2rem; font-weight:800; margin-bottom:2.5rem; }
+        .menu-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(280px,1fr)); gap:1.5rem; max-width:1200px; margin:0 auto; }
+        .menu-card { background:white; border-radius:var(--radius); box-shadow:var(--shadow); overflow:hidden; border:1px solid #f0f0f0; position:relative; }
+        .menu-card img { width:100%; height:200px; object-fit:cover; }
+        .menu-card .card-body { padding:1.2rem; }
+        .menu-card .card-body h3 { font-weight:700; font-size:1.15rem; }
+        .menu-card .card-body .desc { font-size:0.85rem; color:#777; margin-bottom:8px; }
+        .menu-card .card-body .price { font-weight:800; font-size:1.3rem; color:var(--primary); }
+        .availability { position:absolute; top:12px; right:12px; padding:4px 12px; border-radius:20px; font-size:0.75rem; font-weight:700; color:white; }
+        .availability.available { background:var(--green); }
+        .availability.unavailable { background:var(--red); }
+        .add-to-cart-btn { background:var(--primary); color:white; border:none; padding:0.6rem 1.4rem; border-radius:50px; cursor:pointer; font-weight:700; font-size:0.9rem; margin-top:8px; }
+        .add-to-cart-btn:disabled { background:#ccc; cursor:not-allowed; }
+        .cart-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:2000; opacity:0; pointer-events:none; transition:opacity 0.3s; }
+        .cart-overlay.active { opacity:1; pointer-events:all; }
+        .cart-sidebar { position:fixed; top:0; right:-420px; width:400px; max-width:90vw; height:100vh; background:white; z-index:2001; transition:var(--transition); display:flex; flex-direction:column; box-shadow:-10px 0 40px rgba(0,0,0,0.2); }
+        .cart-sidebar.active { right:0; }
+        .cart-header { padding:1.5rem; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center; font-weight:700; font-size:1.2rem; }
+        .cart-close { background:none; border:none; font-size:1.5rem; cursor:pointer; color:#999; }
+        .cart-items { flex:1; overflow-y:auto; padding:1rem; }
+        .cart-item { display:flex; gap:1rem; padding:0.8rem; border-bottom:1px solid #f5f5f5; align-items:center; }
+        .cart-item img { width:60px; height:60px; border-radius:10px; object-fit:cover; }
+        .cart-item-info h4 { font-weight:600; font-size:0.9rem; }
+        .cart-item-info .price { color:var(--primary); font-weight:700; }
+        .cart-item-qty button { width:30px; height:30px; border-radius:50%; border:1px solid #ddd; background:white; cursor:pointer; }
+        .cart-footer { padding:1.5rem; border-top:1px solid #eee; }
+        .cart-total { display:flex; justify-content:space-between; font-weight:800; font-size:1.2rem; margin-bottom:1rem; }
+        .confirm-order-btn { width:100%; background:var(--primary); color:white; border:none; padding:0.9rem; border-radius:50px; cursor:pointer; font-weight:700; }
+        .order-popup-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.6); z-index:3000; display:flex; align-items:center; justify-content:center; opacity:0; pointer-events:none; transition:0.3s; }
+        .order-popup-overlay.active { opacity:1; pointer-events:all; }
+        .order-popup { background:white; border-radius:var(--radius); padding:2rem; width:95%; max-width:650px; max-height:90vh; overflow-y:auto; position:relative; }
+        .order-popup h3 { font-weight:800; font-size:1.4rem; margin-bottom:1.5rem; text-align:center; }
+        .form-group { margin-bottom:1rem; }
+        .form-group label { display:block; font-weight:600; margin-bottom:4px; font-size:0.9rem; }
+        .form-group input, .form-group textarea { width:100%; padding:0.7rem 1rem; border:2px solid #e0e0e0; border-radius:var(--radius-sm); font-size:0.95rem; }
+        .map-search-row { display:flex; gap:0.5rem; margin-bottom:0.5rem; }
+        .map-search-row input { flex:1; }
+        .map-search-row button { background:var(--primary); color:white; border:none; padding:0 1.2rem; border-radius:var(--radius-sm); cursor:pointer; font-weight:600; }
+        #orderMap { height:220px; border-radius:var(--radius-sm); margin-top:8px; border:2px solid #e0e0e0; }
+        .location-coords { font-size:0.8rem; color:var(--primary); font-weight:600; margin-top:4px; }
+        .submit-order-btn { width:100%; background:var(--green); color:white; border:none; padding:0.9rem; border-radius:50px; cursor:pointer; font-weight:700; margin-top:0.5rem; }
+        .close-popup { position:absolute; top:12px; right:16px; background:none; border:none; font-size:1.5rem; cursor:pointer; color:#999; }
+        .reviews-section { padding:5rem 2rem; background:var(--light); }
+        .reviews-section h2 { text-align:center; font-size:2.2rem; font-weight:800; margin-bottom:2rem; }
+        .reviews-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px,1fr)); gap:1.5rem; max-width:1000px; margin:0 auto; }
+        .review-card { background:white; border-radius:var(--radius); padding:1.5rem; box-shadow:var(--shadow); }
+        .review-card .stars { color:#FFD700; font-size:1.1rem; }
+        .add-review-form { max-width:500px; margin:2rem auto 0; background:white; padding:1.5rem; border-radius:var(--radius); box-shadow:var(--shadow); }
+        .star-select { display:flex; gap:4px; font-size:1.5rem; cursor:pointer; justify-content:center; }
+        .star-select span { color:#ddd; transition:var(--transition); }
+        .star-select span.selected { color:#FFD700; }
+        .contact-section { padding:5rem 2rem; background:white; }
+        .contact-section h2 { text-align:center; font-size:2.2rem; font-weight:800; margin-bottom:2rem; }
+        .contact-container { display:flex; gap:2rem; max-width:1100px; margin:0 auto; flex-wrap:wrap; }
+        .contact-info { flex:1; min-width:280px; }
+        .map-container { flex:1.5; min-width:300px; border-radius:var(--radius); overflow:hidden; box-shadow:var(--shadow); height:350px; }
+        .map-container iframe { width:100%; height:100%; border:none; }
+        .footer { background:var(--dark); color:white; padding:3rem 2rem 1.5rem; text-align:center; }
+        .footer a { color:#ddd; text-decoration:none; }
+        .admin-overlay { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); z-index:4000; display:flex; align-items:center; justify-content:center; opacity:0; pointer-events:none; }
+        .admin-overlay.active { opacity:1; pointer-events:all; }
+        .admin-login { background:white; padding:2rem; border-radius:var(--radius); width:90%; max-width:380px; text-align:center; }
+        .admin-login input { width:100%; padding:0.7rem 1rem; border:2px solid #e0e0e0; border-radius:var(--radius-sm); margin-bottom:0.8rem; }
+        .admin-panel { display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:#f5f6fa; z-index:5000; overflow-y:auto; }
+        .admin-panel.active { display:block; }
+        .admin-header { background:var(--dark); color:white; padding:1rem 2rem; display:flex; justify-content:space-between; align-items:center; position:sticky; top:0; }
+        .admin-tabs { display:flex; background:white; border-bottom:2px solid #eee; position:sticky; top:60px; }
+        .admin-tab { padding:0.9rem 1.5rem; cursor:pointer; font-weight:600; border:none; background:none; }
+        .admin-tab.active { color:var(--primary); border-bottom:3px solid var(--primary); }
+        .admin-section { display:none; padding:2rem; max-width:1200px; margin:0 auto; }
+        .admin-section.active { display:block; }
+        .admin-table { width:100%; border-collapse:collapse; background:white; border-radius:var(--radius-sm); overflow:hidden; }
+        .admin-table th, .admin-table td { padding:0.8rem 1rem; border-bottom:1px solid #eee; }
+        .btn-sm { padding:0.4rem 1rem; border-radius:20px; border:none; cursor:pointer; font-weight:600; }
+        .btn-edit { background:#4ecdc4; color:white; }
+        .btn-delete { background:var(--red); color:white; }
+        .btn-add { background:var(--green); color:white; padding:0.6rem 1.5rem; border-radius:50px; border:none; cursor:pointer; font-weight:700; margin-bottom:1rem; }
+        .toast { position:fixed; bottom:30px; left:50%; transform:translateX(-50%) translateY(100px); background:var(--dark); color:white; padding:0.8rem 2rem; border-radius:50px; z-index:9000; transition:transform 0.4s; }
+        .toast.show { transform:translateX(-50%) translateY(0); }
+        .toast.success { background:var(--green); }
+        .toast.error { background:var(--red); }
+        .modal-mini { position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5); z-index:6000; display:flex; align-items:center; justify-content:center; }
+        .modal-mini-content { background:white; padding:2rem; border-radius:var(--radius); width:90%; max-width:500px; max-height:85vh; overflow-y:auto; }
+        @media (max-width:600px) { .menu-grid { grid-template-columns:1fr 1fr; } }
+    </style>
+</head>
+<body>
+    <div id="customCursor"></div><div id="cursorTrail"></div>
+    <nav class="navbar" id="navbar">
+        <div class="logo-container"><div class="logo-icon">🍕</div><span>SnackCity</span></div>
+        <ul class="nav-links" id="navLinks">
+            <li><a href="#home">Home</a></li><li><a href="#highlights">Highlights</a></li><li><a href="#about">About</a></li><li><a href="#menu">Menu</a></li><li><a href="#reviews">Reviews</a></li><li><a href="#contact">Contact</a></li>
+            <li><button class="cart-btn" id="cartBtn">🛒 Cart <span class="cart-count" id="cartCount">0</span></button></li>
+        </ul>
+        <button class="hamburger" id="hamburger"><span></span><span></span><span></span></button>
+    </nav>
+    <button class="fab-cart" id="fabCart">🛒<span class="badge" id="fabCartCount">0</span></button>
+
+    <section class="hero" id="home">
+        <div class="hero-slide active" style="background-image:url('https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=1400&q=80')"></div>
+        <div class="hero-slide" style="background-image:url('https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=1400&q=80')"></div>
+        <div class="hero-slide" style="background-image:url('https://images.unsplash.com/photo-1568901346375-23c9450c58cd?w=1400&q=80')"></div>
+        <div class="hero-slide" style="background-image:url('https://images.unsplash.com/photo-1600891964092-4316c288032e?w=1400&q=80')"></div>
+        <div class="hero-overlay"></div>
+        <div class="hero-content"><h1>Welcome to <span>SnackCity</span></h1><p>Crave-worthy snacks, irresistible flavors!</p><a href="#menu" class="hero-btn">🍽️ Explore Menu</a></div>
+        <div class="hero-dots" id="heroDots"><span class="hero-dot active" data-index="0"></span><span class="hero-dot" data-index="1"></span><span class="hero-dot" data-index="2"></span><span class="hero-dot" data-index="3"></span></div>
+    </section>
+
+    <section class="highlights-section" id="highlights"><h2>🔥 Highlights</h2><div class="highlights-track-wrapper"><div class="highlights-track" id="highlightsTrack"></div></div></section>
+
+    <section class="about-section" id="about"><h2>About SnackCity</h2><p>Fresh ingredients, expert chefs, and fast delivery.</p><div class="about-features"><div class="about-feature"><div class="icon">🧑‍🍳</div><h4>Expert Chefs</h4></div><div class="about-feature"><div class="icon">🥬</div><h4>Fresh Ingredients</h4></div><div class="about-feature"><div class="icon">🚀</div><h4>Fast Delivery</h4></div></div></section>
+
+    <section class="menu-section" id="menu"><h2>🍴 Our Menu</h2><div class="menu-grid" id="menuGrid"></div></section>
+
+    <section class="reviews-section" id="reviews"><h2>⭐ Customer Reviews</h2><div class="reviews-grid" id="reviewsGrid"></div><div class="add-review-form"><h4>Leave a Review</h4><div class="star-select" id="starSelect"><span data-star="1">☆</span><span data-star="2">☆</span><span data-star="3">☆</span><span data-star="4">☆</span><span data-star="5">☆</span></div><div class="form-group"><input type="text" id="reviewName" placeholder="Your Name"></div><div class="form-group"><textarea id="reviewText" rows="3" placeholder="Share experience..."></textarea></div><button class="submit-order-btn" id="submitReviewBtn">Submit Review</button></div></section>
+
+    <section class="contact-section" id="contact"><h2>📍 Contact Us</h2><div class="contact-container"><div class="contact-info"><p>📍 Main Street, Mumbai</p><p>📞 +91 93470 51097</p></div><div class="map-container"><iframe src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3771.092456800000!2d72.8258338!3d19.0591666!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zMTnCsDAzJzMzLjAiTiA3MsKwNDknMzMuMCJF!5e0!3m2!1sen!2sin!4v1700000000000" allowfullscreen></iframe></div></div></section>
+
+    <footer class="footer"><h4>🍕 SnackCity</h4><p>Delicious snacks, happy hearts!</p><div class="footer-links"><a href="#home">Home</a><a href="#menu">Menu</a><a href="#" id="adminLink">Admin</a></div><div class="footer-bottom">&copy; 2026 SnackCity</div></footer>
+
+    <div class="cart-overlay" id="cartOverlay"></div>
+    <div class="cart-sidebar" id="cartSidebar"><div class="cart-header">🛒 Your Cart <button class="cart-close" id="cartClose">&times;</button></div><div class="cart-items" id="cartItems"></div><div class="cart-footer" id="cartFooter" style="display:none;"><div class="cart-total"><span>Total:</span><span id="cartTotal">₹0</span></div><button class="confirm-order-btn" id="confirmOrderBtn">✅ Confirm Order</button></div></div>
+
+    <div class="order-popup-overlay" id="orderPopupOverlay"><div class="order-popup"><button class="close-popup" id="closeOrderPopup">&times;</button><h3>📋 Order Details</h3>
+        <div class="form-group"><label>Full Name *</label><input type="text" id="orderName"></div>
+        <div class="form-group"><label>Phone *</label><input type="tel" id="orderPhone"></div>
+        <div class="form-group"><label>Address *</label><textarea id="orderAddress" rows="2"></textarea></div>
+        <div class="form-group"><label>Pin Code *</label><input type="text" id="orderPincode"></div>
+        <div class="form-group"><label>📍 Search Location or Click Map</label><div class="map-search-row"><input type="text" id="mapSearchInput" placeholder="Search place..."><button id="mapSearchBtn">🔍</button><button id="mapLocateBtn">📍 My Location</button></div><div id="orderMap"></div><p class="location-coords" id="locationCoords">No location selected</p></div>
+        <button class="submit-order-btn" id="submitOrderBtn">📲 Order via WhatsApp</button></div></div>
+
+    <div class="admin-overlay" id="adminOverlay"><div class="admin-login"><h3>🔐 Admin Login</h3><p class="admin-error" id="adminError" style="display:none;">Invalid!</p><input type="text" id="adminUsername" placeholder="Username"><input type="password" id="adminPassword" placeholder="Password"><button id="adminLoginBtn">Login</button><button id="cancelAdminLogin" style="background:#ccc;color:#333;">Cancel</button></div></div>
+
+    <div class="admin-panel" id="adminPanel"><div class="admin-header"><h2>🛠️ Admin Panel</h2><button id="adminLogoutBtn">🚪 Logout</button></div><div class="admin-tabs"><button class="admin-tab active" data-tab="tab-orders">📊 Orders</button><button class="admin-tab" data-tab="tab-menu">📝 Menu</button><button class="admin-tab" data-tab="tab-highlights">✨ Highlights</button></div><div class="admin-content"><div class="admin-section active" id="tab-orders"><h3>📊 Order Details</h3><div class="date-filter"><label>From: <input type="date" id="dateFrom"></label><label>To: <input type="date" id="dateTo"></label><button id="filterOrdersBtn">🔍 Filter</button><button id="clearFilterBtn">Clear</button><button id="downloadCSVBtn" style="margin-left:auto;background:var(--primary);color:white;border:none;padding:0.5rem 1.2rem;border-radius:50px;cursor:pointer;">📥 Download CSV</button></div><div id="ordersList"></div></div><div class="admin-section" id="tab-menu"><h3>📝 Edit Menu</h3><button class="btn-add" id="addMenuItemBtn">+ Add Item</button><table class="admin-table"><thead><tr><th>Image</th><th>Name</th><th>Price</th><th>Desc</th><th>Status</th><th>Actions</th></tr></thead><tbody id="adminMenuBody"></tbody></table></div><div class="admin-section" id="tab-highlights"><h3>✨ Highlights</h3><button class="btn-add" id="addHighlightBtn">+ Add Highlight</button><table class="admin-table"><thead><tr><th>Image</th><th>Text</th><th>URL</th><th>Actions</th></tr></thead><tbody id="adminHighlightsBody"></tbody></table></div></div></div>
+
+    <div class="toast" id="toast"></div>
+    <div class="modal-mini" id="miniModal" style="display:none;"><div class="modal-mini-content" id="miniModalContent"></div></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        (function() {
+            const STORAGE_KEYS = { menu:'snackcity_menu', highlights:'snackcity_highlights', orders:'snackcity_orders', reviews:'snackcity_reviews', cart:'snackcity_cart' };
+            const defaultMenu = [
+                {id:1,name:'Crispy Samosa',price:25,description:'Golden fried pastry',image:'https://images.unsplash.com/photo-1601050690597-df0568f70950?w=400&q=80',available:true},
+                {id:2,name:'Vada Pav',price:20,description:'Mumbai favorite',image:'https://images.unsplash.com/photo-1606491956689-2ea866880c84?w=400&q=80',available:true},
+                {id:3,name:'Pani Puri',price:40,description:'Tangy tamarind water',image:'https://images.unsplash.com/photo-1589302168068-964664d93dc0?w=400&q=80',available:true},
+                {id:4,name:'Cheese Sandwich',price:60,description:'Grilled cheese',image:'https://images.unsplash.com/photo-1528735602780-2552fd46c7af?w=400&q=80',available:true},
+                {id:5,name:'Masala Dosa',price:80,description:'Crispy rice crepe',image:'https://images.unsplash.com/photo-1630383249896-424e482df921?w=400&q=80',available:true},
+                {id:6,name:'Frankie Roll',price:70,description:'Spiced wrap',image:'https://images.unsplash.com/photo-1569058242567-93de6f36f8e6?w=400&q=80',available:true},
+                {id:7,name:'Bhel Puri',price:35,description:'Puffed rice mix',image:'https://images.unsplash.com/photo-1567337710282-00832b415979?w=400&q=80',available:false},
+                {id:8,name:'Cold Coffee',price:50,description:'Chilled coffee',image:'https://images.unsplash.com/photo-1461023058943-07fcbe16d735?w=400&q=80',available:true}
+            ];
+            const defaultHighlights = [
+                {id:1,image:'https://images.unsplash.com/photo-1555396273-367ea4eb4db5?w=500&q=80',text:'🔥 Monsoon Special: Samosas @ ₹20',url:'#menu'},
+                {id:2,image:'https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=500&q=80',text:'🍕 Combo: Sandwich+Coffee=₹99',url:'#menu'},
+                {id:3,image:'https://images.unsplash.com/photo-1600891964092-4316c288032e?w=500&q=80',text:'🎉 Free Delivery on orders >₹200',url:'#menu'}
+            ];
+            function getData(key,d) { try{ const data=localStorage.getItem(key); return data ? JSON.parse(data) : d; }catch(e){return d;} }
+            function setData(key,val) { localStorage.setItem(key,JSON.stringify(val)); }
+            let menuItems = getData(STORAGE_KEYS.menu, defaultMenu);
+            let highlights = getData(STORAGE_KEYS.highlights, defaultHighlights);
+            let orders = getData(STORAGE_KEYS.orders, []);
+            let reviews = getData(STORAGE_KEYS.reviews, []);
+            let cart = getData(STORAGE_KEYS.cart, []);
+            function saveAll() { setData(STORAGE_KEYS.menu,menuItems); setData(STORAGE_KEYS.highlights,highlights); setData(STORAGE_KEYS.orders,orders); setData(STORAGE_KEYS.reviews,reviews); setData(STORAGE_KEYS.cart,cart); }
+            const $ = s => document.querySelector(s), $$ = s => document.querySelectorAll(s);
+
+            // Cursor, navbar, hero slider, etc. (minimal, same as before)
+            const cursor=$('#customCursor'), trail=$('#cursorTrail'); let cx=0,cy=0,tx=0,ty=0;
+            document.addEventListener('mousemove',e=>{cx=e.clientX;cy=e.clientY;if(cursor){cursor.style.left=cx+'px';cursor.style.top=cy+'px';}});
+            function animTrail(){tx+=(cx-tx)*0.25;ty+=(cy-ty)*0.25;if(trail){trail.style.left=tx+'px';trail.style.top=ty+'px';}requestAnimationFrame(animTrail);} animTrail();
+            document.addEventListener('mouseover',e=>{const t=e.target.closest('a,button,.menu-card,.highlight-card,.hero-btn,.add-to-cart-btn,.cart-btn,.hero-dot,input,textarea,.star-select span,.admin-tab,.fab-cart');if(t&&cursor){cursor.classList.add('dot');cursor.style.borderColor='var(--accent)';if(trail)trail.style.opacity='1';}});
+            document.addEventListener('mouseout',e=>{const t=e.target.closest('a,button,.menu-card,.highlight-card,.hero-btn,.add-to-cart-btn,.cart-btn,.hero-dot,input,textarea,.star-select span,.admin-tab,.fab-cart');if(t&&cursor){cursor.classList.remove('dot');cursor.style.borderColor='var(--primary)';if(trail)trail.style.opacity='0.6';}});
+            const navbar=$('#navbar'),hamburger=$('#hamburger'),navLinks=$('#navLinks');
+            window.addEventListener('scroll',()=>navbar.classList.toggle('scrolled',window.scrollY>50));
+            hamburger.addEventListener('click',()=>navLinks.classList.toggle('active'));
+            navLinks.querySelectorAll('a').forEach(l=>l.addEventListener('click',()=>navLinks.classList.remove('active')));
+            let currentSlide=0,heroInterval;
+            const slides=$$('.hero-slide'),dots=$$('.hero-dot'),totalSlides=slides.length;
+            function goToSlide(i){slides.forEach(s=>s.classList.remove('active'));dots.forEach(d=>d.classList.remove('active'));slides[i].classList.add('active');dots[i].classList.add('active');currentSlide=i;}
+            heroInterval=setInterval(()=>goToSlide((currentSlide+1)%totalSlides),4000);
+            dots.forEach(d=>d.addEventListener('click',()=>{clearInterval(heroInterval);goToSlide(parseInt(d.dataset.index));heroInterval=setInterval(()=>goToSlide((currentSlide+1)%totalSlides),4000);}));
+
+            function renderHighlights(){
+                const track=$('#highlightsTrack');
+                if(!highlights.length){track.innerHTML='<p class="no-highlights">No highlights</p>';return;}
+                const cards=highlights.map(h=>`<a href="${h.url||'#'}" class="highlight-card"><img src="${h.image}" onerror="this.src='https://via.placeholder.com/400x180/FF6B35/white?text=SnackCity'"><div class="hl-info"><h4>${h.text}</h4></div></a>`).join('');
+                track.innerHTML=cards+cards;
+            }
+            function renderMenu(){
+                $('#menuGrid').innerHTML=menuItems.map(item=>`
+                <div class="menu-card"><span class="availability ${item.available?'available':'unavailable'}">${item.available?'Available':'Unavailable'}</span>
+                <img src="${item.image}" onerror="this.src='https://via.placeholder.com/400x200/FF6B35/white?text=${encodeURIComponent(item.name)}'">
+                <div class="card-body"><h3>${item.name}</h3><p class="desc">${item.description}</p><p class="price">₹${item.price}</p>
+                <button class="add-to-cart-btn" ${!item.available?'disabled':''} onclick="addToCart(${item.id})">${item.available?'➕ Add to Cart':'❌ Unavailable'}</button></div></div>`).join('');
+            }
+            window.addToCart=function(id){
+                const item=menuItems.find(m=>m.id===id); if(!item||!item.available) return;
+                const existing=cart.find(c=>c.id===id); existing?existing.qty++:cart.push({id:item.id,name:item.name,price:item.price,image:item.image,qty:1});
+                saveAll();updateCartUI();showToast(`${item.name} added!`,'success');
+            };
+            function removeFromCart(id){cart=cart.filter(c=>c.id!==id);saveAll();updateCartUI();renderCartItems();}
+            function updateQty(id,delta){const item=cart.find(c=>c.id===id);if(!item)return;item.qty+=delta;if(item.qty<=0){removeFromCart(id);return;}saveAll();updateCartUI();renderCartItems();}
+            function updateCartUI(){const cnt=cart.reduce((s,c)=>s+c.qty,0);$('#cartCount').textContent=cnt;$('#fabCartCount').textContent=cnt;}
+            function getCartTotal(){return cart.reduce((s,c)=>s+c.price*c.qty,0);}
+            function renderCartItems(){
+                const container=$('#cartItems'),footer=$('#cartFooter');
+                if(!cart.length){container.innerHTML='<p class="empty-cart">Empty cart</p>';footer.style.display='none';}
+                else{container.innerHTML=cart.map(c=>`<div class="cart-item"><img src="${c.image}" onerror="this.src='https://via.placeholder.com/60'"><div class="cart-item-info"><h4>${c.name}</h4><p class="price">₹${c.price}×${c.qty}=₹${c.price*c.qty}</p></div><div class="cart-item-qty"><button onclick="updateQty(${c.id},-1)">−</button><span>${c.qty}</span><button onclick="updateQty(${c.id},1)">+</button></div><button class="cart-item-remove" onclick="removeFromCart(${c.id})">🗑️</button></div>`).join('');footer.style.display='block';$('#cartTotal').textContent='₹'+getCartTotal();}
+            }
+            window.updateQty=updateQty; window.removeFromCart=removeFromCart;
+            function openCart(){renderCartItems();$('#cartSidebar').classList.add('active');$('#cartOverlay').classList.add('active');document.body.style.overflow='hidden';}
+            function closeCart(){$('#cartSidebar').classList.remove('active');$('#cartOverlay').classList.remove('active');document.body.style.overflow='';}
+            $('#cartBtn').addEventListener('click',openCart);$('#fabCart').addEventListener('click',openCart);
+            $('#cartClose').addEventListener('click',closeCart);$('#cartOverlay').addEventListener('click',closeCart);
+
+            let orderMap=null,orderMarker=null,selectedLatLng=null;
+            $('#confirmOrderBtn').addEventListener('click',()=>{if(!cart.length){showToast('Cart empty!','error');return;}closeCart();$('#orderPopupOverlay').classList.add('active');document.body.style.overflow='hidden';setTimeout(initOrderMap,300);});
+            $('#closeOrderPopup').addEventListener('click',closeOrderPopup);
+            $('#orderPopupOverlay').addEventListener('click',e=>{if(e.target===$('#orderPopupOverlay'))closeOrderPopup();});
+            function closeOrderPopup(){$('#orderPopupOverlay').classList.remove('active');document.body.style.overflow='';if(orderMap){orderMap.remove();orderMap=null;orderMarker=null;selectedLatLng=null;}$('#locationCoords').textContent='No location selected';}
+
+            function initOrderMap(){
+                if(orderMap) return;
+                orderMap = L.map('orderMap').setView([19.0760,72.8777],13);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{attribution:'&copy; OpenStreetMap',maxZoom:19}).addTo(orderMap);
+                orderMap.on('click',e=>placeMarker(e.latlng.lat,e.latlng.lng));
+                if(navigator.geolocation){navigator.geolocation.getCurrentPosition(p=>{placeMarker(p.coords.latitude,p.coords.longitude);orderMap.setView([p.coords.latitude,p.coords.longitude],15);},()=>{$('#locationCoords').textContent='Click map to select location';});}
+                setTimeout(()=>{if(orderMap)orderMap.invalidateSize();},200);
+                $('#mapSearchBtn').onclick=searchLocation;
+                $('#mapSearchInput').onkeypress=e=>{if(e.key==='Enter')searchLocation();};
+                $('#mapLocateBtn').onclick=()=>{if(navigator.geolocation){navigator.geolocation.getCurrentPosition(p=>{placeMarker(p.coords.latitude,p.coords.longitude);orderMap.setView([p.coords.latitude,p.coords.longitude],16);},()=>showToast('Cannot get location','error'));}else showToast('Geolocation not supported','error');};
+            }
+            function placeMarker(lat,lng){
+                selectedLatLng={lat,lng};
+                if(orderMarker) orderMarker.setLatLng([lat,lng]); else orderMarker=L.marker([lat,lng]).addTo(orderMap).bindPopup('📍 Delivery').openPopup();
+                $('#locationCoords').textContent=`📍 ${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+            }
+            async function searchLocation(){
+                const q=$('#mapSearchInput').value.trim(); if(!q){showToast('Enter location','error');return;}
+                try{
+                    const res=await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(q)}`);
+                    const data=await res.json();
+                    if(data.length>0){const lat=parseFloat(data[0].lat),lng=parseFloat(data[0].lon);placeMarker(lat,lng);orderMap.setView([lat,lng],16);}
+                    else showToast('Location not found','error');
+                }catch(e){showToast('Search failed','error');}
+            }
+
+            $('#submitOrderBtn').addEventListener('click',()=>{
+                const name=$('#orderName').value.trim(),phone=$('#orderPhone').value.trim(),address=$('#orderAddress').value.trim(),pincode=$('#orderPincode').value.trim();
+                if(!name||!phone||!address||!pincode){showToast('Fill all fields','error');return;}
+                if(!selectedLatLng){showToast('Select location on map','error');return;}
+                let summary=cart.map(c=>`• ${c.name} x${c.qty} = ₹${c.price*c.qty}`).join('\n');
+                const total=getCartTotal();
+                const mapsLink=`https://www.google.com/maps?q=${selectedLatLng.lat},${selectedLatLng.lng}`;
+                const msg=`🛒 *New Order from SnackCity!*\n\n📋 *Order:*\n${summary}\n💰 *Total: ₹${total}*\n👤 ${name}\n📞 ${phone}\n📍 ${address}, ${pincode}\n🗺️ ${mapsLink}\n📅 ${new Date().toLocaleString()}\n✅ _Please confirm._`;
+                orders.push({id:Date.now(),date:new Date().toISOString(),name,phone,address,pincode,lat:selectedLatLng.lat,lng:selectedLatLng.lng,items:[...cart],total,status:'pending'});
+                cart=[];saveAll();updateCartUI();renderCartItems();closeOrderPopup();
+                window.open(`https://wa.me/919347051097?text=${encodeURIComponent(msg)}`,'_blank');
+                showToast('Order sent via WhatsApp!','success');
+            });
+
+            function renderReviews(){
+                const grid=$('#reviewsGrid');
+                grid.innerHTML=reviews.length?reviews.slice().reverse().map(r=>`<div class="review-card"><div class="stars">${'★'.repeat(r.stars)}${'☆'.repeat(5-r.stars)}</div><p class="reviewer">${escapeHTML(r.name)}</p><p>${escapeHTML(r.text)}</p><small>${new Date(r.date).toLocaleDateString()}</small></div>`).join(''):'<p>No reviews yet.</p>';
+            }
+            function escapeHTML(s){const d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+            let selectedStars=5;
+            const starSpans=$$('#starSelect span');
+            starSpans.forEach(s=>s.addEventListener('click',function(){selectedStars=parseInt(this.dataset.star);updateStarDisplay();}));
+            starSpans.forEach(s=>s.addEventListener('mouseenter',function(){const v=parseInt(this.dataset.star);starSpans.forEach((sp,i)=>sp.textContent=i<v?'★':'☆');}));
+            $('#starSelect').addEventListener('mouseleave',updateStarDisplay);
+            function updateStarDisplay(){starSpans.forEach((s,i)=>{s.textContent=i<selectedStars?'★':'☆';s.classList.toggle('selected',i<selectedStars);});}
+            updateStarDisplay();
+            $('#submitReviewBtn').addEventListener('click',()=>{
+                const name=$('#reviewName').value.trim(),text=$('#reviewText').value.trim();
+                if(!name||!text){showToast('Fill all fields','error');return;}
+                reviews.push({id:Date.now(),name,text,stars:selectedStars,date:new Date().toISOString()});saveAll();renderReviews();$('#reviewName').value='';$('#reviewText').value='';selectedStars=5;updateStarDisplay();showToast('Review submitted!','success');
+            });
+
+            function showToast(msg,type=''){const t=$('#toast');t.textContent=msg;t.className='toast '+type+' show';clearTimeout(t._timeout);t._timeout=setTimeout(()=>t.classList.remove('show'),2500);}
+
+            // Admin
+            const ADMIN={u:'admin',p:'pass'};
+            $('#adminLink').addEventListener('click',e=>{e.preventDefault();$('#adminOverlay').classList.add('active');});
+            $('#cancelAdminLogin').addEventListener('click',()=>$('#adminOverlay').classList.remove('active'));
+            $('#adminOverlay').addEventListener('click',e=>{if(e.target===$('#adminOverlay'))$('#adminOverlay').classList.remove('active');});
+            $('#adminLoginBtn').addEventListener('click',()=>{
+                if($('#adminUsername').value.trim()===ADMIN.u && $('#adminPassword').value.trim()===ADMIN.p){
+                    $('#adminOverlay').classList.remove('active');$('#adminPanel').classList.add('active');document.body.style.overflow='hidden';
+                    renderAdminOrders();renderAdminMenu();renderAdminHighlights();switchAdminTab('tab-orders');
+                }else{$('#adminError').style.display='block';setTimeout(()=>$('#adminError').style.display='none',2000);}
+            });
+            $('#adminLogoutBtn').addEventListener('click',()=>{$('#adminPanel').classList.remove('active');document.body.style.overflow='';closeMiniModal();menuItems=getData(STORAGE_KEYS.menu,defaultMenu);highlights=getData(STORAGE_KEYS.highlights,defaultHighlights);orders=getData(STORAGE_KEYS.orders,[]);reviews=getData(STORAGE_KEYS.reviews,[]);renderAll();showToast('Logged out','success');});
+            $$('.admin-tab').forEach(t=>t.addEventListener('click',function(){switchAdminTab(this.dataset.tab);}));
+            function switchAdminTab(id){$$('.admin-tab').forEach(t=>t.classList.remove('active'));$$('.admin-section').forEach(s=>s.classList.remove('active'));document.querySelector(`.admin-tab[data-tab="${id}"]`)?.classList.add('active');document.getElementById(id)?.classList.add('active');}
+
+            function renderAdminOrders(filtered=null){
+                const disp=filtered||orders;
+                $('#ordersList').innerHTML=disp.length?`<table class="admin-table"><thead><tr><th>ID</th><th>Date</th><th>Customer</th><th>Phone</th><th>Items</th><th>Total</th><th>Map</th></tr></thead><tbody>${disp.map(o=>`<tr><td>#${o.id}</td><td>${new Date(o.date).toLocaleDateString()}</td><td>${escapeHTML(o.name)}</td><td>${o.phone}</td><td>${o.items.map(i=>`${i.name}×${i.qty}`).join(', ')}</td><td>₹${o.total}</td><td><a href="https://www.google.com/maps?q=${o.lat},${o.lng}" target="_blank">View</a></td></tr>`).join('')}</tbody></table>`:'<p>No orders found.</p>';
+            }
+            $('#filterOrdersBtn').addEventListener('click',()=>{
+                const f=$('#dateFrom').value,t=$('#dateTo').value; if(!f||!t){showToast('Select dates','error');return;}
+                const fd=new Date(f),td=new Date(t); td.setHours(23,59,59);
+                renderAdminOrders(orders.filter(o=>{const d=new Date(o.date);return d>=fd&&d<=td;}));
+            });
+            $('#clearFilterBtn').addEventListener('click',()=>{$('#dateFrom').value='';$('#dateTo').value='';renderAdminOrders();});
+            // CSV download
+            $('#downloadCSVBtn').addEventListener('click',()=>{
+                const f=$('#dateFrom').value,t=$('#dateTo').value;
+                let data=orders;
+                if(f&&t){const fd=new Date(f),td=new Date(t);td.setHours(23,59,59);data=orders.filter(o=>{const d=new Date(o.date);return d>=fd&&d<=td;});}
+                if(!data.length){showToast('No data to download','error');return;}
+                let csv='Order ID,Date,Customer,Phone,Items,Total,Lat,Lng,Address,Pincode\n';
+                data.forEach(o=>{
+                    const items=o.items.map(i=>`${i.name} x${i.qty}`).join('; ');
+                    csv+=`${o.id},"${new Date(o.date).toLocaleString()}","${o.name}","${o.phone}","${items}",${o.total},${o.lat},${o.lng},"${o.address}","${o.pincode}"\n`;
+                });
+                const blob=new Blob([csv],{type:'text/csv'});
+                const url=URL.createObjectURL(blob);
+                const a=document.createElement('a');a.href=url;a.download='snackcity_orders.csv';a.click();URL.revokeObjectURL(url);
+                showToast('CSV downloaded!','success');
+            });
+
+            function renderAdminMenu(){
+                $('#adminMenuBody').innerHTML=menuItems.map(item=>`<tr><td><img src="${item.image}" style="width:50px;height:50px;object-fit:cover;border-radius:6px;"></td><td>${escapeHTML(item.name)}</td><td>₹${item.price}</td><td>${escapeHTML(item.description)}</td><td><span class="status-dot ${item.available?'green':'red'}"></span>${item.available?'Available':'Unavailable'}</td><td><button class="btn-sm btn-edit" onclick="editMenuItem(${item.id})">✏️</button><button class="btn-sm btn-delete" onclick="deleteMenuItem(${item.id})">🗑️</button></td></tr>`).join('');
+            }
+            window.editMenuItem=function(id){
+                const item=menuItems.find(m=>m.id===id); if(!item)return;
+                $('#miniModal').style.display='flex';
+                $('#miniModalContent').innerHTML=`<h3>Edit Menu Item</h3>
+                <div class="form-group"><label>Name</label><input type="text" id="editName" value="${escapeHTML(item.name)}"></div>
+                <div class="form-group"><label>Price</label><input type="number" id="editPrice" value="${item.price}"></div>
+                <div class="form-group"><label>Description</label><textarea id="editDesc">${escapeHTML(item.description)}</textarea></div>
+                <div class="form-group"><label>Image URL</label><input type="text" id="editImage" value="${item.image}"></div>
+                <div class="form-group"><label>Or upload local image</label><input type="file" id="editImageFile" accept="image/*"></div>
+                <div class="form-group"><label>Available</label><select id="editAvailable"><option value="1" ${item.available?'selected':''}>✅ Yes</option><option value="0" ${!item.available?'selected':''}>❌ No</option></select></div>
+                <button class="submit-order-btn" id="saveEditBtn">💾 Save</button><button onclick="closeMiniModal()" style="width:100%;background:#ccc;margin-top:6px;">Cancel</button>`;
+                $('#saveEditBtn').addEventListener('click',async function(){
+                    let img=$('#editImage').value.trim();
+                    const file=$('#editImageFile'); if(file.files&&file.files[0]) img=await readFileAsDataURL(file.files[0]);
+                    item.name=$('#editName').value.trim();item.price=parseInt($('#editPrice').value)||0;item.description=$('#editDesc').value.trim();item.image=img||item.image;item.available=$('#editAvailable').value==='1';
+                    saveAll();renderAdminMenu();menuItems=getData(STORAGE_KEYS.menu,defaultMenu);renderMenu();closeMiniModal();showToast('Updated!','success');
+                });
+            };
+            window.deleteMenuItem=function(id){if(confirm('Delete?')){menuItems=menuItems.filter(m=>m.id!==id);saveAll();renderAdminMenu();renderMenu();showToast('Deleted','error');}};
+            $('#addMenuItemBtn').addEventListener('click',()=>{
+                $('#miniModal').style.display='flex';
+                $('#miniModalContent').innerHTML=`<h3>Add Menu Item</h3>
+                <div class="form-group"><label>Name</label><input type="text" id="addName"></div>
+                <div class="form-group"><label>Price</label><input type="number" id="addPrice"></div>
+                <div class="form-group"><label>Description</label><textarea id="addDesc"></textarea></div>
+                <div class="form-group"><label>Image URL</label><input type="text" id="addImage" placeholder="https://..."></div>
+                <div class="form-group"><label>Or upload</label><input type="file" id="addImageFile" accept="image/*"></div>
+                <div class="form-group"><label>Available</label><select id="addAvailable"><option value="1">✅ Yes</option><option value="0">❌ No</option></select></div>
+                <button class="submit-order-btn" id="saveAddBtn">💾 Add</button><button onclick="closeMiniModal()" style="width:100%;background:#ccc;margin-top:6px;">Cancel</button>`;
+                $('#saveAddBtn').addEventListener('click',async function(){
+                    let img=$('#addImage').value.trim()||'https://via.placeholder.com/400x200/FF6B35/white?text=SnackCity';
+                    const file=$('#addImageFile'); if(file.files&&file.files[0]) img=await readFileAsDataURL(file.files[0]);
+                    menuItems.push({id:Date.now(),name:$('#addName').value.trim()||'New',price:parseInt($('#addPrice').value)||0,description:$('#addDesc').value.trim()||'',image:img,available:$('#addAvailable').value==='1'});
+                    saveAll();renderAdminMenu();menuItems=getData(STORAGE_KEYS.menu,defaultMenu);renderMenu();closeMiniModal();showToast('Added!','success');
+                });
+            });
+
+            function renderAdminHighlights(){
+                $('#adminHighlightsBody').innerHTML=highlights.map(h=>`<tr><td><img src="${h.image}" style="width:60px;height:50px;object-fit:cover;"></td><td>${escapeHTML(h.text)}</td><td><a href="${h.url}">${h.url}</a></td><td><button class="btn-sm btn-edit" onclick="editHighlight(${h.id})">✏️</button><button class="btn-sm btn-delete" onclick="deleteHighlight(${h.id})">🗑️</button></td></tr>`).join('');
+            }
+            window.editHighlight=function(id){
+                const h=highlights.find(hl=>hl.id===id);if(!h)return;
+                $('#miniModal').style.display='flex';
+                $('#miniModalContent').innerHTML=`<h3>Edit Highlight</h3>
+                <div class="form-group"><label>Image URL</label><input type="text" id="editHImage" value="${escapeHTML(h.image)}"></div>
+                <div class="form-group"><label>Or upload</label><input type="file" id="editHImageFile" accept="image/*"></div>
+                <div class="form-group"><label>Text</label><input type="text" id="editHText" value="${escapeHTML(h.text)}"></div>
+                <div class="form-group"><label>URL</label><input type="text" id="editHUrl" value="${escapeHTML(h.url)}"></div>
+                <button class="submit-order-btn" id="saveHEditBtn">💾 Save</button><button onclick="closeMiniModal()" style="width:100%;background:#ccc;">Cancel</button>`;
+                $('#saveHEditBtn').addEventListener('click',async function(){
+                    let img=$('#editHImage').value.trim();
+                    const file=$('#editHImageFile'); if(file.files&&file.files[0]) img=await readFileAsDataURL(file.files[0]);
+                    h.image=img;h.text=$('#editHText').value.trim();h.url=$('#editHUrl').value.trim();
+                    saveAll();renderAdminHighlights();highlights=getData(STORAGE_KEYS.highlights,defaultHighlights);renderHighlights();closeMiniModal();showToast('Updated!','success');
+                });
+            };
+            window.deleteHighlight=function(id){if(confirm('Delete?')){highlights=highlights.filter(hl=>hl.id!==id);saveAll();renderAdminHighlights();renderHighlights();showToast('Deleted','error');}};
+            $('#addHighlightBtn').addEventListener('click',()=>{
+                $('#miniModal').style.display='flex';
+                $('#miniModalContent').innerHTML=`<h3>Add Highlight</h3>
+                <div class="form-group"><label>Image URL</label><input type="text" id="addHImage"></div>
+                <div class="form-group"><label>Or upload</label><input type="file" id="addHImageFile" accept="image/*"></div>
+                <div class="form-group"><label>Text</label><input type="text" id="addHText"></div>
+                <div class="form-group"><label>URL</label><input type="text" id="addHUrl" value="#"></div>
+                <button class="submit-order-btn" id="saveHAddBtn">💾 Add</button><button onclick="closeMiniModal()" style="width:100%;background:#ccc;">Cancel</button>`;
+                $('#saveHAddBtn').addEventListener('click',async function(){
+                    let img=$('#addHImage').value.trim()||'https://via.placeholder.com/400x180/FF6B35/white?text=Highlight';
+                    const file=$('#addHImageFile'); if(file.files&&file.files[0]) img=await readFileAsDataURL(file.files[0]);
+                    highlights.push({id:Date.now(),image:img,text:$('#addHText').value.trim()||'New',url:$('#addHUrl').value.trim()||'#'});
+                    saveAll();renderAdminHighlights();highlights=getData(STORAGE_KEYS.highlights,defaultHighlights);renderHighlights();closeMiniModal();showToast('Added!','success');
+                });
+            });
+
+            function readFileAsDataURL(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);});}
+            window.closeMiniModal=function(){$('#miniModal').style.display='none';};
+            $('#miniModal').addEventListener('click',e=>{if(e.target===$('#miniModal'))closeMiniModal();});
+
+            function renderAll(){renderHighlights();renderMenu();renderReviews();updateCartUI();renderCartItems();}
+            renderAll();
+        })();
+    </script>
+</body>
+</html>
